@@ -254,10 +254,16 @@ def capture_state(settings_existed: bool, current: dict[str, Any], mode: str) ->
 def save_original(
     settings: Path, backup_dir: Path, current: dict[str, Any], mode: str
 ) -> tuple[dict[str, Any], Path]:
-    """Replace the named pre-learning snapshot immediately before learning mode."""
+    """Create the named pre-learning snapshot exactly once."""
     backup_dir.mkdir(parents=True, exist_ok=True)
     original_json = backup_dir / ORIGINAL_JSON_NAME
     original_missing = backup_dir / ORIGINAL_MISSING_NAME
+
+    if original_json.exists() or original_missing.exists():
+        raise ValueError(
+            "an original/pre-learning backup already exists but its state file is missing; "
+            "refusing to overwrite the original backup"
+        )
 
     state = capture_state(settings.exists(), current, mode)
     if settings.exists():
@@ -292,6 +298,12 @@ def restore_source(source: Path, settings: Path) -> None:
         settings.unlink(missing_ok=True)
     else:
         atomic_restore(source, settings)
+
+
+def source_matches_settings(source: Path, settings: Path) -> bool:
+    if source.suffix == ".missing":
+        return not settings.exists()
+    return settings.exists() and source.read_bytes() == settings.read_bytes()
 
 
 def restore_saved(
@@ -485,6 +497,20 @@ def main() -> int:
                 if state is None:
                     raise ValueError("no original/pre-learning state exists; use backups to inspect history")
                 source = original_source(args.backup_dir, state)
+            if source_matches_settings(source, args.settings_file):
+                if state is not None:
+                    if args.history_backup and mode_matches(current, "strict", state):
+                        state["active_mode"] = "strict"
+                    elif args.history_backup and mode_matches(current, "learn", state):
+                        state["active_mode"] = "learn"
+                    else:
+                        state["active_mode"] = None
+                    atomic_write(state_path, state)
+                if args.history_backup:
+                    print(f"History backup already active: {source.name}")
+                else:
+                    print("Already restored to original/pre-learning state")
+                return 0
             safety = backup(args.settings_file, args.backup_dir)
             restore_source(source, args.settings_file)
             if state is not None:
@@ -512,20 +538,28 @@ def main() -> int:
                 warn_about_comment_loss(args.settings_file, dry_run=True)
                 print(json.dumps(updated, indent=4, ensure_ascii=False))
                 return 0
-            if updated == current and state is not None and state.get("active_mode") == requested_mode:
-                print(f"{requested_mode.capitalize()} settings are already active; no changes made.")
-                return 0
-            warn_about_comment_loss(args.settings_file, dry_run=False)
-            if state is None or state.get("active_mode") not in {"learn", "strict"}:
+            if state is None:
                 state, original_path = save_original(
                     args.settings_file, args.backup_dir, current, requested_mode
                 )
                 saved_message = f"Original/pre-learning state saved: {original_path}"
+                updated = apply_mode(current, requested_mode, state)
+                if updated == current:
+                    print(saved_message)
+                    print(f"Mode already active: {requested_mode}")
+                    return 0
+            elif updated == current:
+                if state.get("active_mode") != requested_mode:
+                    state["active_mode"] = requested_mode
+                    atomic_write(state_path, state)
+                print(f"Mode already active: {requested_mode}")
+                return 0
             else:
                 saved = backup(args.settings_file, args.backup_dir)
                 saved_message = f"Safety/history backup created: {saved}"
                 state["active_mode"] = requested_mode
                 atomic_write(state_path, state)
+            warn_about_comment_loss(args.settings_file, dry_run=False)
             updated = apply_mode(current, requested_mode, state)
             atomic_write(args.settings_file, updated)
             print(saved_message)
@@ -543,6 +577,12 @@ def main() -> int:
         if args.dry_run:
             warn_about_comment_loss(args.settings_file, dry_run=True)
             print("<settings file would be removed>" if not updated and state and not state.get("settings_file_existed") else json.dumps(updated, indent=4, ensure_ascii=False))
+            return 0
+        if updated == current:
+            if state is not None and state.get("active_mode") is not None:
+                state["active_mode"] = None
+                atomic_write(state_path, state)
+            print("Already restored to original/pre-learning state")
             return 0
         warn_about_comment_loss(args.settings_file, dry_run=False)
         saved = backup(args.settings_file, args.backup_dir)

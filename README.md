@@ -97,9 +97,13 @@ vassist status
 
 With no arguments or with a directory argument, `vassist` applies learn mode and runs `code .` from the selected directory. Explicit commands such as `vassist learn`, `vassist assist`, and `vassist status` do not open VS Code unless `--open` is supplied.
 
+Mode commands are idempotent: requesting an already-active mode does not rewrite `settings.json` or create another history backup. Bare `vassist` still opens VS Code when Learn mode is already active. The original/pre-learning snapshot is created once and is never replaced by Learn or Strict settings.
+
 `vassist doctor` is read-only. It checks Python, the installed command, PATH, optional `code`/`make` availability, and whether the current workspace settings and saved state are valid.
 
 Ordinary empty folders are allowed. When no common project marker is present, `vassist` prints: “Using this folder as the project because you ran vassist here.” Known system, home, Windows-system, and installed-tool directories are refused unless explicitly confirmed with `--force`. `vassist` always refuses to run as root or through sudo.
+
+Real modifying commands use an atomic project-local lock at `.vscode/.assist-toggle.lockdir`. A concurrent command exits instead of racing backups or writes. The lock records a PID and UTC timestamp and is removed automatically on normal exit.
 
 ## Modes: `learn`, `strict`, `assist`
 

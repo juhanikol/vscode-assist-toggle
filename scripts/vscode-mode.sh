@@ -159,6 +159,29 @@ if [[ "$OPEN_AFTER" == "true" ]] && ! command -v code >/dev/null 2>&1; then
   exit 1
 fi
 
+LOCK_DIR="$PROJECT_ROOT/.vscode/.assist-toggle.lockdir"
+LOCK_HELD="false"
+
+release_lock() {
+  if [[ "$LOCK_HELD" == "true" ]]; then
+    rm -f "$LOCK_DIR/pid" "$LOCK_DIR/timestamp"
+    rmdir "$LOCK_DIR" 2>/dev/null || true
+    LOCK_HELD="false"
+  fi
+}
+
+if [[ "$DRY_RUN" != "true" && ( "$COMMAND" == "learn" || "$COMMAND" == "strict" || "$COMMAND" == "assist" || "$COMMAND" == "restore" || "$COMMAND" == "backup" ) ]]; then
+  mkdir -p "$PROJECT_ROOT/.vscode"
+  if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+    echo "Another vassist process is already modifying this project. Try again in a moment." >&2
+    exit 1
+  fi
+  LOCK_HELD="true"
+  printf '%s\n' "$$" > "$LOCK_DIR/pid"
+  date -u +'%Y-%m-%dT%H:%M:%SZ' > "$LOCK_DIR/timestamp"
+  trap release_lock EXIT
+fi
+
 if [[ "$COMMAND" == "doctor" ]]; then
   failures=0
   echo "vassist doctor"
@@ -223,6 +246,9 @@ fi
 
 python3 "$SCRIPT_DIR/settings-patch.py" \
   "$COMMAND" "$SETTINGS_FILE" "$BACKUP_DIR" "${EXTRA_ARGS[@]}"
+
+release_lock
+trap - EXIT
 
 if [[ "$COMMAND" == "learn" || "$COMMAND" == "strict" || "$COMMAND" == "assist" || "$COMMAND" == "restore" ]]; then
   echo "Run Developer: Reload Window if changes do not apply."

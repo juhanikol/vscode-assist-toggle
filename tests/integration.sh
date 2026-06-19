@@ -9,6 +9,9 @@ COMMENT_PROJECT="$TEST_DIR/comment-project"
 DEFAULT_PROJECT="$TEST_DIR/default-project"
 DOT_PROJECT="$TEST_DIR/dot-project"
 ABSOLUTE_PROJECT="$TEST_DIR/absolute-project"
+IDEMPOTENT_PROJECT="$TEST_DIR/idempotent-project"
+LOCK_PROJECT="$TEST_DIR/lock-project"
+SLOW_BIN="$TEST_DIR/slow-bin"
 FAKE_BIN="$TEST_DIR/bin"
 
 cleanup() {
@@ -16,13 +19,20 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "$TEST_HOME" "$TEST_PROJECT" "$COMMENT_PROJECT/.vscode" "$DEFAULT_PROJECT" "$DOT_PROJECT" "$ABSOLUTE_PROJECT" "$FAKE_BIN"
+mkdir -p "$TEST_HOME" "$TEST_PROJECT" "$COMMENT_PROJECT/.vscode" "$DEFAULT_PROJECT" "$DOT_PROJECT" "$ABSOLUTE_PROJECT" "$IDEMPOTENT_PROJECT/.vscode" "$LOCK_PROJECT" "$SLOW_BIN" "$FAKE_BIN"
 cat > "$FAKE_BIN/code" <<EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$*" > "$TEST_DIR/code-args"
 pwd -P > "$TEST_DIR/code-pwd"
 EOF
 chmod +x "$FAKE_BIN/code"
+
+cat > "$IDEMPOTENT_PROJECT/.vscode/settings.json" <<'JSON'
+{
+    "files.autoSave": "off",
+    "editor.inlineSuggest.enabled": true
+}
+JSON
 
 export HOME="$TEST_HOME"
 export PATH="$FAKE_BIN:$PATH"
@@ -91,6 +101,76 @@ if SUDO_USER=test-user "$HOME/.local/bin/vassist" status >"$TEST_DIR/sudo-output
 fi
 grep -Fq "refuses to run as root or through sudo" "$TEST_DIR/sudo-output"
 
+cd "$IDEMPOTENT_PROJECT"
+"$HOME/.local/bin/vassist" learn >/dev/null
+cp .vscode/.assist-toggle-backups/original.settings.json "$TEST_DIR/original-backup-copy"
+learn_inode="$(stat -c '%i' .vscode/settings.json)"
+learn_history_count="$(find .vscode/.assist-toggle-backups -maxdepth 1 -name 'settings.*' -type f | wc -l)"
+"$HOME/.local/bin/vassist" learn >"$TEST_DIR/learn-again-output"
+grep -Fq "Mode already active: learn" "$TEST_DIR/learn-again-output"
+test "$learn_inode" = "$(stat -c '%i' .vscode/settings.json)"
+test "$learn_history_count" = "$(find .vscode/.assist-toggle-backups -maxdepth 1 -name 'settings.*' -type f | wc -l)"
+cmp "$TEST_DIR/original-backup-copy" .vscode/.assist-toggle-backups/original.settings.json
+
+"$HOME/.local/bin/vassist" >"$TEST_DIR/default-again-output"
+grep -Fq "Mode already active: learn" "$TEST_DIR/default-again-output"
+grep -Fxq "." "$TEST_DIR/code-args"
+grep -Fxq "$IDEMPOTENT_PROJECT" "$TEST_DIR/code-pwd"
+test "$learn_inode" = "$(stat -c '%i' .vscode/settings.json)"
+test "$learn_history_count" = "$(find .vscode/.assist-toggle-backups -maxdepth 1 -name 'settings.*' -type f | wc -l)"
+
+"$HOME/.local/bin/vassist" strict >/dev/null
+strict_inode="$(stat -c '%i' .vscode/settings.json)"
+strict_history_count="$(find .vscode/.assist-toggle-backups -maxdepth 1 -name 'settings.*' -type f | wc -l)"
+"$HOME/.local/bin/vassist" strict >"$TEST_DIR/strict-again-output"
+grep -Fq "Mode already active: strict" "$TEST_DIR/strict-again-output"
+test "$strict_inode" = "$(stat -c '%i' .vscode/settings.json)"
+test "$strict_history_count" = "$(find .vscode/.assist-toggle-backups -maxdepth 1 -name 'settings.*' -type f | wc -l)"
+cmp "$TEST_DIR/original-backup-copy" .vscode/.assist-toggle-backups/original.settings.json
+
+"$HOME/.local/bin/vassist" assist >/dev/null
+assist_inode="$(stat -c '%i' .vscode/settings.json)"
+assist_history_count="$(find .vscode/.assist-toggle-backups -maxdepth 1 -name 'settings.*' -type f | wc -l)"
+"$HOME/.local/bin/vassist" assist >"$TEST_DIR/assist-again-output"
+grep -Fq "Already restored to original/pre-learning state" "$TEST_DIR/assist-again-output"
+test "$assist_inode" = "$(stat -c '%i' .vscode/settings.json)"
+test "$assist_history_count" = "$(find .vscode/.assist-toggle-backups -maxdepth 1 -name 'settings.*' -type f | wc -l)"
+cmp "$TEST_DIR/original-backup-copy" .vscode/.assist-toggle-backups/original.settings.json
+
+restore_history_count="$assist_history_count"
+"$HOME/.local/bin/vassist" restore >"$TEST_DIR/restore-again-output"
+grep -Fq "Already restored to original/pre-learning state" "$TEST_DIR/restore-again-output"
+test "$restore_history_count" = "$(find .vscode/.assist-toggle-backups -maxdepth 1 -name 'settings.*' -type f | wc -l)"
+"$HOME/.local/bin/vassist" learn >/dev/null
+cmp "$TEST_DIR/original-backup-copy" .vscode/.assist-toggle-backups/original.settings.json
+
+real_python="$(command -v python3)"
+cat > "$SLOW_BIN/python3" <<EOF
+#!/usr/bin/env bash
+if [[ "\$*" == *settings-patch.py* ]]; then
+  sleep 2
+fi
+exec "$real_python" "\$@"
+EOF
+chmod +x "$SLOW_BIN/python3"
+cd "$LOCK_PROJECT"
+PATH="$SLOW_BIN:$PATH" "$HOME/.local/bin/vassist" learn >"$TEST_DIR/first-lock-output" 2>&1 &
+first_vassist_pid=$!
+for attempt in {1..100}; do
+  [[ -d .vscode/.assist-toggle.lockdir ]] && break
+  sleep 0.02
+done
+test -d .vscode/.assist-toggle.lockdir
+test -f .vscode/.assist-toggle.lockdir/pid
+test -f .vscode/.assist-toggle.lockdir/timestamp
+if "$HOME/.local/bin/vassist" assist >"$TEST_DIR/second-lock-output" 2>&1; then
+  echo "Expected concurrent vassist command to fail." >&2
+  exit 1
+fi
+grep -Fq "Another vassist process is already modifying this project. Try again in a moment." "$TEST_DIR/second-lock-output"
+wait "$first_vassist_pid"
+test ! -e .vscode/.assist-toggle.lockdir
+
 cd "$TEST_PROJECT"
 "$HOME/.local/bin/vassist" doctor | grep -Fq "Doctor result: healthy"
 test ! -e .vscode/settings.json
@@ -132,4 +212,4 @@ cmp "$TEST_DIR/bashrc-before-uninstall" "$HOME/.bashrc"
 grep -Fq "not the installer-owned wrapper" "$TEST_DIR/uninstall-output"
 grep -Fq "incomplete or duplicated" "$TEST_DIR/uninstall-output"
 
-echo "Isolated install, default/path dispatch, safety, JSONC, mode, open, restore, and guarded-uninstall tests passed."
+echo "Isolated install, idempotency, locking, path safety, JSONC, mode, open, restore, and guarded-uninstall tests passed."
