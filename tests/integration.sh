@@ -6,6 +6,9 @@ TEST_DIR="$(mktemp -d /tmp/vassist-test.XXXXXX)"
 TEST_HOME="$TEST_DIR/home"
 TEST_PROJECT="$TEST_DIR/project"
 COMMENT_PROJECT="$TEST_DIR/comment-project"
+DEFAULT_PROJECT="$TEST_DIR/default-project"
+DOT_PROJECT="$TEST_DIR/dot-project"
+ABSOLUTE_PROJECT="$TEST_DIR/absolute-project"
 FAKE_BIN="$TEST_DIR/bin"
 
 cleanup() {
@@ -13,10 +16,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "$TEST_HOME" "$TEST_PROJECT" "$COMMENT_PROJECT/.vscode" "$FAKE_BIN"
+mkdir -p "$TEST_HOME" "$TEST_PROJECT" "$COMMENT_PROJECT/.vscode" "$DEFAULT_PROJECT" "$DOT_PROJECT" "$ABSOLUTE_PROJECT" "$FAKE_BIN"
 cat > "$FAKE_BIN/code" <<EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$*" > "$TEST_DIR/code-args"
+pwd -P > "$TEST_DIR/code-pwd"
 EOF
 chmod +x "$FAKE_BIN/code"
 
@@ -47,6 +51,45 @@ if grep -Fq "This comment should trigger" .vscode/settings.json; then
 fi
 "$HOME/.local/bin/vassist" restore >/dev/null
 grep -Fq "This comment should trigger" .vscode/settings.json
+
+cd "$DEFAULT_PROJECT"
+"$HOME/.local/bin/vassist" >/dev/null
+test -f .vscode/settings.json
+grep -Fxq "." "$TEST_DIR/code-args"
+grep -Fxq "$DEFAULT_PROJECT" "$TEST_DIR/code-pwd"
+"$HOME/.local/bin/vassist" assist >/dev/null
+
+cd "$DOT_PROJECT"
+"$HOME/.local/bin/vassist" . >/dev/null
+test -f .vscode/settings.json
+grep -Fxq "." "$TEST_DIR/code-args"
+grep -Fxq "$DOT_PROJECT" "$TEST_DIR/code-pwd"
+"$HOME/.local/bin/vassist" assist >/dev/null
+
+cd "$TEST_DIR"
+"$HOME/.local/bin/vassist" "$ABSOLUTE_PROJECT" >/dev/null
+test -f "$ABSOLUTE_PROJECT/.vscode/settings.json"
+grep -Fxq "." "$TEST_DIR/code-args"
+grep -Fxq "$ABSOLUTE_PROJECT" "$TEST_DIR/code-pwd"
+"$HOME/.local/bin/vassist" assist "$ABSOLUTE_PROJECT" >/dev/null
+
+if "$HOME/.local/bin/vassist" "$HOME" >"$TEST_DIR/danger-output" 2>&1; then
+  echo "Expected dangerous HOME target to be refused." >&2
+  exit 1
+fi
+grep -Fq "refusing potentially dangerous project directory" "$TEST_DIR/danger-output"
+test ! -e "$HOME/.vscode/settings.json"
+"$HOME/.local/bin/vassist" "$HOME" --force >/dev/null
+test -f "$HOME/.vscode/settings.json"
+grep -Fxq "$HOME" "$TEST_DIR/code-pwd"
+"$HOME/.local/bin/vassist" assist "$HOME" --force >/dev/null
+test ! -e "$HOME/.vscode/settings.json"
+
+if SUDO_USER=test-user "$HOME/.local/bin/vassist" status >"$TEST_DIR/sudo-output" 2>&1; then
+  echo "Expected sudo-style execution to be refused." >&2
+  exit 1
+fi
+grep -Fq "refuses to run as root or through sudo" "$TEST_DIR/sudo-output"
 
 cd "$TEST_PROJECT"
 "$HOME/.local/bin/vassist" doctor | grep -Fq "Doctor result: healthy"
@@ -89,4 +132,4 @@ cmp "$TEST_DIR/bashrc-before-uninstall" "$HOME/.bashrc"
 grep -Fq "not the installer-owned wrapper" "$TEST_DIR/uninstall-output"
 grep -Fq "incomplete or duplicated" "$TEST_DIR/uninstall-output"
 
-echo "Isolated install, JSONC warning, mode, open, restore, and guarded-uninstall tests passed."
+echo "Isolated install, default/path dispatch, safety, JSONC, mode, open, restore, and guarded-uninstall tests passed."

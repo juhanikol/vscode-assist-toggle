@@ -1,6 +1,34 @@
-# VS Code Assist Toggle
+# vassist — VS Code learning mode for students and self-learners
 
-## Learning without losing IntelliSense
+Learning to code is already hard enough.
+
+You are trying to understand the language, the editor, the terminal, Git, project structure, error messages, and your own code at the same time. AI coding assistants can be useful, but when you are practising, they can also quietly change the whole learning experience. One moment you planned to solve the problem yourself, and a few suggestions later the rest of the day has been coded with another brain.
+
+Many students also struggle with VS Code settings. You disable something, an extension update changes the behavior, a setting comes back, or different projects suddenly behave differently. While experimenting, it is easy to accidentally change editor settings globally and end up with an inconsistent or broken setup.
+
+`vassist` exists to make this simpler.
+
+It changes only one thing: the current project’s `.vscode/settings.json`.
+
+It does not touch your global VS Code settings, WSL settings, extension storage, authentication, caches, or other projects. It creates backups, keeps the change local to the project, and lets you switch between learning mode and normal assist mode from the terminal.
+
+If you already start VS Code from the terminal with:
+
+```
+code .
+```
+
+then using this tool should feel just as simple:
+
+```
+vassist
+```
+
+No more hunting through settings. No more wondering which project has AI assistance enabled. No more accidentally changing your whole editor setup just because you wanted one focused learning session.
+
+Let the tool worry about the settings, so you can focus on learning
+
+## vassist explained
 
 `vassist` creates a project-local no-AI practice mode for VS Code. Students can keep normal IntelliSense, compiler diagnostics, language-server feedback, parameter hints, hover, and definition navigation while AI generation is disabled for an exercise repository.
 
@@ -44,14 +72,30 @@ Run `vassist` from the root of the project you want to change:
 
 ```bash
 cd /path/to/project
-vassist doctor
-vassist status
-vassist learn
+vassist
 ```
 
-The current directory is always the workspace boundary. Normal commands do not require `make` or the VS Code `code` command.
+The beginner-friendly comparison is:
+
+```bash
+code .      # Normal VS Code start
+vassist     # Apply learn mode here, then open VS Code here
+```
+
+You can also select the project explicitly:
+
+```bash
+vassist .
+vassist /path/to/project
+vassist assist
+vassist status
+```
+
+With no arguments or with a directory argument, `vassist` applies learn mode and runs `code .` from the selected directory. Explicit commands such as `vassist learn`, `vassist assist`, and `vassist status` do not open VS Code unless `--open` is supplied.
 
 `vassist doctor` is read-only. It checks Python, the installed command, PATH, optional `code`/`make` availability, and whether the current workspace settings and saved state are valid.
+
+Ordinary empty folders are allowed. When no common project marker is present, `vassist` prints: “Using this folder as the project because you ran vassist here.” Known system, home, Windows-system, and installed-tool directories are refused unless explicitly confirmed with `--force`. `vassist` always refuses to run as root or through sudo.
 
 ## Modes: `learn`, `strict`, `assist`
 
@@ -78,12 +122,13 @@ vassist strict --dry-run
 ## Open VS Code with a mode
 
 ```bash
+vassist
 vassist learn --open
 vassist strict --open
 vassist assist --open
 ```
 
-`--open` applies the mode and then runs `code .`. The `code` command is required only for this option. Run **Developer: Reload Window** if changes do not apply.
+The default command and `--open` apply the mode and then run `code .` from the target project. Run **Developer: Reload Window** if changes do not apply.
 
 ## Restore
 
@@ -113,8 +158,8 @@ Uninstall removes only the installer-owned runtime, wrapper, and `.bashrc` PATH 
 
 - `python3` is required for safe JSON/JSONC validation and patching.
 - `make` is optional and used only for developer convenience.
-- `code` is optional and needed only for `vassist --open`.
-- Ordinary `vassist` commands require neither `make` nor `code`.
+- `code` is required for bare `vassist`, directory shortcuts such as `vassist .`, and explicit `--open` commands.
+- Explicit non-opening commands such as `vassist learn`, `vassist assist`, and `vassist status` require neither `make` nor `code`.
 - The default installer never runs `sudo`.
 - PATH setup currently targets Bash on Linux/WSL by updating `.bashrc` only when needed. zsh and fish are not configured automatically.
 
@@ -141,11 +186,12 @@ Workspace and state writes are atomic. Unrelated project settings are preserved.
 
 ## Comparison with other approaches
 
-| Approach | Scope and tradeoff |
-|---|---|
-| `vassist` | One terminal command per project, original-state backup, and separate learn/strict modes. No VS Code extension is required. |
-| Manual workspace settings | Built into VS Code and equally project-local, but repetitive and easier to restore incorrectly across many exercises. |
-| VS Code profiles | Useful for broad editor setups, extension sets, and UI preferences, but profile state is wider than one exercise repository. |
+
+| Approach                   | Scope and tradeoff                                                                                                            |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `vassist`                  | One terminal command per project, original-state backup, and separate learn/strict modes. No VS Code extension is required.   |
+| Manual workspace settings  | Built into VS Code and equally project-local, but repetitive and easier to restore incorrectly across many exercises.         |
+| VS Code profiles           | Useful for broad editor setups, extension sets, and UI preferences, but profile state is wider than one exercise repository.  |
 | Settings-toggle extensions | Can provide convenient UI toggles, but require installing and trusting another extension and may use extension-managed state. |
 
 For one-off use, editing workspace settings manually is perfectly reasonable. `vassist` mainly adds repeatability, mode names, validation, and clear restoration.
