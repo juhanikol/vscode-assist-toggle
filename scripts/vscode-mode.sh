@@ -89,7 +89,7 @@ if [[ "$COMMAND" == "doctor" ]]; then
       echo "[OK] Workspace settings and saved state are valid."
     else
       echo "[ERROR] Workspace validation failed:"
-      echo "$validation_output" | sed 's/^/  /'
+      printf '%s\n' "$validation_output" | sed 's/^/  /'
       failures=$((failures + 1))
     fi
   else

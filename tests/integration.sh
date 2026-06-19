@@ -41,7 +41,10 @@ grep -Fq "A real mode change would rewrite" "$TEST_DIR/comment-dry-warning"
 cmp "$TEST_DIR/settings-before-dry-run.jsonc" .vscode/settings.json
 "$HOME/.local/bin/vassist" learn >"$TEST_DIR/comment-write-output" 2>"$TEST_DIR/comment-write-warning"
 grep -Fq "This mode change will rewrite" "$TEST_DIR/comment-write-warning"
-! grep -Fq "This comment should trigger" .vscode/settings.json
+if grep -Fq "This comment should trigger" .vscode/settings.json; then
+    echo "Comment was unexpectedly preserved"
+    exit 1
+fi
 "$HOME/.local/bin/vassist" restore >/dev/null
 grep -Fq "This comment should trigger" .vscode/settings.json
 

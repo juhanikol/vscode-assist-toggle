@@ -148,6 +148,7 @@ mv "$temporary_wrapper" "$WRAPPER"
 
 if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
   touch "$BASHRC"
+  # shellcheck disable=SC2016 # Intentionally matching literal '$HOME' or '~' text in .bashrc.
   if grep -Eq '(\$HOME|~)/\.local/bin' "$BASHRC"; then
     echo "$BIN_DIR is already configured in $BASHRC; open a new terminal if needed."
   elif ! grep -Fq "$PATH_BEGIN" "$BASHRC"; then
