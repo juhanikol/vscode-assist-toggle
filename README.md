@@ -45,7 +45,11 @@ Typical users include:
 - developers who want temporary no-AI practice
 - WSL/Linux users who prefer a simple terminal workflow
 
-This is a practice aid, not an enforcement or exam-proctoring system. Workspace settings can be changed by anyone who can edit the repository.
+This is a practice aid, not an enforcement or exam-proctoring system. Workspace settings can be changed by anyone who can edit the repository. The point is psychological, not technical enforcement.
+
+When you run vassist the project opens in learning mode. AI assistance is off before the coding session begins. After that, turning it back on is still possible, but it now requires a conscious interruption: change the mode, reload or reopen the editor, and restart the flow. That small amount of friction matters. For a tired or overloaded student, it is often enough to stay with the original decision and keep practising independently.
+
+The goal is not to prevent anyone from using AI. The goal is to help the learner make one clear decision at the beginning of the session — and then stay inside that decision long enough to actually learn.
 
 ## Install
 
@@ -195,3 +199,17 @@ Workspace and state writes are atomic. Unrelated project settings are preserved.
 | Settings-toggle extensions | Can provide convenient UI toggles, but require installing and trusting another extension and may use extension-managed state. |
 
 For one-off use, editing workspace settings manually is perfectly reasonable. `vassist` mainly adds repeatability, mode names, validation, and clear restoration.
+
+## Note for educators
+
+`vassist` is not designed as an enforcement mechanism. It is a instructional design tool that changes the learner’s starting condition. Instead of relying on students to repeatedly remember to disable AI assistance, the learning session begins with independent work as the default state. From that point on, re-enabling assistance requires an intentional context switch, which uses ordinary decision inertia in favor of practice rather than against it.
+
+Pedagogically, the tool aims to preserve useful scaffolding while protecting productive cognitive effort. In learning mode, students can still use normal editor feedback, compiler messages, language-server support, and documentation, but generative assistance is moved out of the immediate problem-solving loop. This supports self-regulation, retrieval, debugging, hypothesis testing, and the kind of desirable difficulty where the learner must actively construct part of the solution instead of merely accepting it.
+
+The goal is not to reject AI as a learning tool. The goal is to make the boundary between practice and assisted production explicit, repeatable, and easy to manage at the level of a single project.
+
+https://pmc.ncbi.nlm.nih.gov/articles/PMC5408091/
+
+https://www.cambridge.org/core/journals/behavioural-public-policy/article/when-and-why-defaults-influence-decisions-a-metaanalysis-of-default-effects/67AF6972CFB52698A60B6BD94B70C2C0
+
+https://www.whz.de/fileadmin/lehre/hochschuldidaktik/docs/dunloskiimprovingstudentlearning.pdf
