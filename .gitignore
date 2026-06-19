@@ -1,0 +1,4 @@
+# Local generated files
+local/
+*.backup.*
+.vscode/.assist-toggle-backups/
