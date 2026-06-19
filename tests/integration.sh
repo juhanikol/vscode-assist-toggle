@@ -157,9 +157,10 @@ cd "$LOCK_PROJECT"
 PATH="$SLOW_BIN:$PATH" "$HOME/.local/bin/vassist" learn >"$TEST_DIR/first-lock-output" 2>&1 &
 first_vassist_pid=$!
 # Wait for the first vassist to acquire the lock.
-for attempt in {1..100}; do
-  [[ -d .vscode/.assist-toggle.lockdir ]] && break
+wait_count=0
+while [[ ! -d .vscode/.assist-toggle.lockdir && "$wait_count" -lt 100 ]]; do
   sleep 0.02
+  wait_count=$((wait_count + 1))
 done
 test -d .vscode/.assist-toggle.lockdir
 test -f .vscode/.assist-toggle.lockdir/pid
