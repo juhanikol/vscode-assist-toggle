@@ -156,6 +156,7 @@ chmod +x "$SLOW_BIN/python3"
 cd "$LOCK_PROJECT"
 PATH="$SLOW_BIN:$PATH" "$HOME/.local/bin/vassist" learn >"$TEST_DIR/first-lock-output" 2>&1 &
 first_vassist_pid=$!
+# Wait for the first vassist to acquire the lock.
 for attempt in {1..100}; do
   [[ -d .vscode/.assist-toggle.lockdir ]] && break
   sleep 0.02
