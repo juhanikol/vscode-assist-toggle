@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -euo pipefail
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
@@ -12,6 +12,7 @@ ABSOLUTE_PROJECT="$TEST_DIR/absolute-project"
 IDEMPOTENT_PROJECT="$TEST_DIR/idempotent-project"
 LOCK_PROJECT="$TEST_DIR/lock-project"
 SLOW_BIN="$TEST_DIR/slow-bin"
+OLD_BIN="$TEST_DIR/old-bin"
 FAKE_BIN="$TEST_DIR/bin"
 
 cleanup() {
@@ -19,7 +20,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "$TEST_HOME" "$TEST_PROJECT" "$COMMENT_PROJECT/.vscode" "$DEFAULT_PROJECT" "$DOT_PROJECT" "$ABSOLUTE_PROJECT" "$IDEMPOTENT_PROJECT/.vscode" "$LOCK_PROJECT" "$SLOW_BIN" "$FAKE_BIN"
+mkdir -p "$TEST_HOME" "$TEST_PROJECT" "$COMMENT_PROJECT/.vscode" "$DEFAULT_PROJECT" "$DOT_PROJECT" "$ABSOLUTE_PROJECT" "$IDEMPOTENT_PROJECT/.vscode" "$LOCK_PROJECT" "$SLOW_BIN" "$OLD_BIN" "$FAKE_BIN"
 cat > "$FAKE_BIN/code" <<EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$*" > "$TEST_DIR/code-args"
@@ -40,6 +41,24 @@ export PATH="$FAKE_BIN:$PATH"
 "$ROOT_DIR/install.sh"
 test -x "$HOME/.local/bin/vassist"
 "$HOME/.local/bin/vassist" --help >/dev/null
+expected_version="vassist $(<"$ROOT_DIR/VERSION")"
+test "$("$HOME/.local/bin/vassist" --version)" = "$expected_version"
+test "$(<"$HOME/.local/share/vscode-assist-toggle/VERSION")" = "$(<"$ROOT_DIR/VERSION")"
+
+cat > "$OLD_BIN/python3" <<'PYTHON'
+#!/bin/bash
+if [[ "${1:-}" == "--version" ]]; then
+  echo "Python 3.8.0"
+  exit 0
+fi
+exit 1
+PYTHON
+chmod +x "$OLD_BIN/python3"
+if PATH="$OLD_BIN:$PATH" "$HOME/.local/bin/vassist" status >"$TEST_DIR/runtime-old-python-output" 2>&1; then
+  echo "Expected runtime to reject Python 3.8." >&2
+  exit 1
+fi
+grep -Fq "Python 3.9 or newer is required. Found: Python 3.8.0" "$TEST_DIR/runtime-old-python-output"
 
 cat > "$COMMENT_PROJECT/.vscode/settings.json" <<'JSONC'
 {
@@ -175,6 +194,17 @@ test ! -e .vscode/.assist-toggle.lockdir
 
 cd "$TEST_PROJECT"
 "$HOME/.local/bin/vassist" doctor | grep -Fq "Doctor result: healthy"
+mkdir -p .vscode/.assist-toggle.lockdir
+printf '%s\n' 99999999 > .vscode/.assist-toggle.lockdir/pid
+printf '%s\n' 2026-01-01T00:00:00Z > .vscode/.assist-toggle.lockdir/timestamp
+if "$HOME/.local/bin/vassist" doctor >"$TEST_DIR/stale-lock-output" 2>&1; then
+  echo "Expected doctor to reject a stale project lock." >&2
+  exit 1
+fi
+grep -Fq "Stale project lock detected" "$TEST_DIR/stale-lock-output"
+grep -Fq "After confirming no vassist process is running, remove it manually" "$TEST_DIR/stale-lock-output"
+test -d .vscode/.assist-toggle.lockdir
+rm -rf .vscode/.assist-toggle.lockdir
 test ! -e .vscode/settings.json
 "$HOME/.local/bin/vassist" learn --dry-run >/dev/null
 test ! -e .vscode/settings.json
@@ -214,4 +244,4 @@ cmp "$TEST_DIR/bashrc-before-uninstall" "$HOME/.bashrc"
 grep -Fq "not the installer-owned wrapper" "$TEST_DIR/uninstall-output"
 grep -Fq "incomplete or duplicated" "$TEST_DIR/uninstall-output"
 
-echo "Isolated install, idempotency, locking, path safety, JSONC, mode, open, restore, and guarded-uninstall tests passed."
+echo "Isolated install/version, idempotency, locking/stale-lock, path safety, JSONC, mode, open, restore, and guarded-uninstall tests passed."

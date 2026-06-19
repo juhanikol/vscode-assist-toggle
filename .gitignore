@@ -2,3 +2,4 @@
 local/
 *.backup.*
 .vscode/.assist-toggle-backups/
+.vscode/.assist-toggle.lockdir/

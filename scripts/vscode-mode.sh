@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+VERSION_FILE="$SCRIPT_DIR/../VERSION"
+ISSUES_URL="https://github.com/juhanikol/vscode-assist-toggle/issues"
+VERSION="unknown"
+if [[ -r "$VERSION_FILE" ]]; then
+  IFS= read -r VERSION < "$VERSION_FILE" || true
+fi
+
 usage() {
   cat <<'HELP'
 Usage:
@@ -12,14 +20,15 @@ Usage:
   vassist assist [--open] [PATH]
   vassist status | doctor | backup | backups
   vassist restore [latest|history-backup-filename]
+  vassist --version
   vassist --help
 
 Use --force only to confirm an intentionally selected protected directory.
-Only TARGET/.vscode/settings.json and its project-local backups are managed.
+Only TARGET/.vscode/settings.json and project-local backup/state/lock paths are managed.
 HELP
+  echo "Report issues: $ISSUES_URL"
 }
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 EXTRA_ARGS=()
 OPEN_AFTER="false"
 DRY_RUN="false"
@@ -38,6 +47,10 @@ else
       ;;
     -h|--help)
       usage
+      exit 0
+      ;;
+    -V|--version)
+      printf 'vassist %s\n' "$VERSION"
       exit 0
       ;;
     --force)
@@ -188,8 +201,8 @@ if [[ "$COMMAND" == "doctor" ]]; then
   echo "Workspace: $PROJECT_ROOT"
   echo "Settings:  $SETTINGS_FILE"
 
-  if command -v python3 >/dev/null 2>&1; then
-    echo "[OK] Python: $(python3 --version 2>&1)"
+  if command -v python3 >/dev/null 2>&1 && python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)'; then
+    echo "[OK] Python 3.9+: $(python3 --version 2>&1)"
     if validation_output="$(python3 "$SCRIPT_DIR/settings-patch.py" status "$SETTINGS_FILE" "$BACKUP_DIR" 2>&1)"; then
       echo "[OK] Workspace settings and saved state are valid."
     else
@@ -197,11 +210,36 @@ if [[ "$COMMAND" == "doctor" ]]; then
       printf '%s\n' "$validation_output" | sed 's/^/  /'
       failures=$((failures + 1))
     fi
+  elif command -v python3 >/dev/null 2>&1; then
+    echo "[ERROR] Python 3.9 or newer is required. Found: $(python3 --version 2>&1)"
+    failures=$((failures + 1))
   else
-    echo "[ERROR] Python 3 is required."
+    echo "[ERROR] Python 3.9 or newer is required."
     echo "        Ubuntu/WSL: sudo apt update"
     echo "        Ubuntu/WSL: sudo apt install -y python3"
     failures=$((failures + 1))
+  fi
+
+  if [[ -d "$LOCK_DIR" ]]; then
+    lock_pid=""
+    lock_timestamp=""
+    if [[ -r "$LOCK_DIR/pid" ]]; then
+      IFS= read -r lock_pid < "$LOCK_DIR/pid" || true
+    fi
+    if [[ -r "$LOCK_DIR/timestamp" ]]; then
+      IFS= read -r lock_timestamp < "$LOCK_DIR/timestamp" || true
+    fi
+    if [[ "$lock_pid" =~ ^[0-9]+$ ]] && kill -0 "$lock_pid" 2>/dev/null; then
+      echo "[INFO] Active project lock: $LOCK_DIR (PID $lock_pid, ${lock_timestamp:-timestamp unknown})"
+    else
+      echo "[ERROR] Stale project lock detected: $LOCK_DIR"
+      echo "        PID: ${lock_pid:-unknown}; timestamp: ${lock_timestamp:-unknown}"
+      echo "        After confirming no vassist process is running, remove it manually:"
+      echo "        rm -rf -- '$LOCK_DIR'"
+      failures=$((failures + 1))
+    fi
+  else
+    echo "[OK] No project lock is present."
   fi
 
   if command -v vassist >/dev/null 2>&1; then
@@ -224,6 +262,7 @@ if [[ "$COMMAND" == "doctor" ]]; then
   else
     echo "[INFO] make is not installed; it is optional."
   fi
+  echo "Report issues: $ISSUES_URL"
 
   if [[ "$failures" -eq 0 ]]; then
     echo "Doctor result: healthy"
@@ -236,11 +275,16 @@ fi
 
 if ! command -v python3 >/dev/null 2>&1; then
   cat >&2 <<'ERROR'
-Error: Python 3 is required to update VS Code settings safely.
+Error: Python 3.9 or newer is required to update VS Code settings safely.
 Python lets this tool validate settings.json files that contain VS Code comments.
 Install Python 3, then run the command again.
 On Ubuntu/WSL: sudo apt install python3
 ERROR
+  exit 1
+fi
+
+if ! python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)'; then
+  echo "Error: Python 3.9 or newer is required. Found: $(python3 --version 2>&1)" >&2
   exit 1
 fi
 

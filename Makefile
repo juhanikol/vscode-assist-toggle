@@ -14,8 +14,9 @@ uninstall:
 	./install.sh --uninstall
 
 check:
-	bash -n install.sh scripts/vscode-mode.sh tests/integration.sh tests/dependency-checks.sh
+	bash -n install.sh scripts/vscode-mode.sh tests/integration.sh tests/dependency-checks.sh tests/release-checks.sh
 	python3 -c 'import ast, pathlib; ast.parse(pathlib.Path("scripts/settings-patch.py").read_text(encoding="utf-8"))'
+	bash tests/release-checks.sh
 
 test: check
 	bash tests/dependency-checks.sh

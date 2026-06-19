@@ -108,10 +108,16 @@ esac
 
 if ! command -v python3 >/dev/null 2>&1; then
   cat >&2 <<'ERROR'
-Python 3 is required.
+Python 3.9 or newer is required.
 Ubuntu/WSL: sudo apt update
 Ubuntu/WSL: sudo apt install -y python3
 ERROR
+  exit 1
+fi
+
+if ! python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)'; then
+  echo "Python 3.9 or newer is required. Found: $(python3 --version 2>&1)" >&2
+  echo "On Ubuntu/WSL, install a supported Python release and run the installer again." >&2
   exit 1
 fi
 
@@ -132,6 +138,7 @@ cp "$SOURCE_DIR/scripts/vscode-mode.sh" "$INSTALL_DIR/scripts/vscode-mode.sh"
 cp "$SOURCE_DIR/scripts/settings-patch.py" "$INSTALL_DIR/scripts/settings-patch.py"
 cp "$SOURCE_DIR/README.md" "$INSTALL_DIR/README.md"
 cp "$SOURCE_DIR/LICENSE" "$INSTALL_DIR/LICENSE"
+cp "$SOURCE_DIR/VERSION" "$INSTALL_DIR/VERSION"
 cp "$SOURCE_DIR/install.sh" "$INSTALL_DIR/install.sh"
 chmod +x "$INSTALL_DIR/scripts/vscode-mode.sh" "$INSTALL_DIR/scripts/settings-patch.py"
 chmod +x "$INSTALL_DIR/install.sh"
@@ -170,7 +177,8 @@ PATH_BLOCK
   fi
 fi
 
-if [[ ! -x "$WRAPPER" ]] || ! "$WRAPPER" --help >/dev/null 2>&1; then
+expected_version="vassist $(<"$SOURCE_DIR/VERSION")"
+if [[ ! -x "$WRAPPER" ]] || ! "$WRAPPER" --help >/dev/null 2>&1 || [[ "$("$WRAPPER" --version)" != "$expected_version" ]]; then
   echo "Error: installation verification failed for $WRAPPER" >&2
   exit 1
 fi

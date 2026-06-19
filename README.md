@@ -1,5 +1,19 @@
 # vassist — VS Code learning mode for students and self-learners
 
+## Quick start
+
+Supported platform: Bash on Linux or WSL, with Python 3.9 or newer.
+
+```bash
+git clone github.com/juhanikol/vscode-assist-to.git
+cd vscode-assist-toggle
+./install.sh
+cd /path/to/your/project
+vassist
+```
+
+Check an installation with `vassist --version` and `vassist doctor`.
+
 Learning to code is already hard enough.
 
 You are trying to understand the language, the editor, the terminal, Git, project structure, error messages, and your own code at the same time. AI coding assistants can be useful, but when you are practising, they can also quietly change the whole learning experience. One moment you planned to solve the problem yourself, and a few suggestions later the rest of the day has been coded with another brain.
@@ -8,7 +22,7 @@ Many students also struggle with VS Code settings. You disable something, an ext
 
 `vassist` exists to make this simpler.
 
-It changes only one thing: the current project’s `.vscode/settings.json`.
+The only VS Code settings file it modifies is the current project's `.vscode/settings.json`; it also creates project-local backup/state/lock files.
 
 It does not touch your global VS Code settings, WSL settings, extension storage, authentication, caches, or other projects. It creates backups, keeps the change local to the project, and lets you switch between learning mode and normal assist mode from the terminal.
 
@@ -56,7 +70,7 @@ The goal is not to prevent anyone from using AI. The goal is to help the learner
 Clone this repository once and run its installer:
 
 ```bash
-git clone <REPOSITORY_URL> vscode-assist-toggle  # Replace with the actual repository URL.
+git clone github.com/juhanikol/vscode-assist-toggle.git
 cd vscode-assist-toggle
 ./install.sh
 ```
@@ -104,6 +118,8 @@ Mode commands are idempotent: requesting an already-active mode does not rewrite
 Ordinary empty folders are allowed. When no common project marker is present, `vassist` prints: “Using this folder as the project because you ran vassist here.” Known system, home, Windows-system, and installed-tool directories are refused unless explicitly confirmed with `--force`. `vassist` always refuses to run as root or through sudo.
 
 Real modifying commands use an atomic project-local lock at `.vscode/.assist-toggle.lockdir`. A concurrent command exits instead of racing backups or writes. The lock records a PID and UTC timestamp and is removed automatically on normal exit.
+
+If a crash or forced shutdown leaves that lock behind, `vassist doctor` reports it as stale but does not delete it. First confirm that no vassist process is running, then follow the exact manual removal command printed by `doctor`.
 
 ## Modes: `learn`, `strict`, `assist`
 
@@ -164,7 +180,7 @@ Uninstall removes only the installer-owned runtime, wrapper, and `.bashrc` PATH 
 
 ## Dependency notes
 
-- `python3` is required for safe JSON/JSONC validation and patching.
+- Python 3.9 or newer is required for safe JSON/JSONC validation and patching.
 - `make` is optional and used only for developer convenience.
 - `code` is required for bare `vassist`, directory shortcuts such as `vassist .`, and explicit `--open` commands.
 - Explicit non-opening commands such as `vassist learn`, `vassist assist`, and `vassist status` require neither `make` nor `code`.
@@ -179,9 +195,13 @@ On Ubuntu/WSL, dependencies can optionally be installed before the normal instal
 
 The installer prints the exact commands, asks for confirmation with `[y/N]`, then runs `sudo apt update` and `sudo apt install -y python3 make`. Use `./install.sh --install-deps --yes` only when you intentionally want to skip that confirmation. It never runs `apt upgrade`. You can instead install Python manually and run ordinary `./install.sh` without sudo.
 
+## Support and security
+
+Report bugs or request help at `github.com/juhanikol/vscode-assist-toggle/issues` . Include `vassist --version`, your Linux/WSL version, and redacted `vassist doctor` output. See [SECURITY.md](SECURITY.md) for private vulnerability-reporting guidance.
+
 ## What the tool does not touch
 
-At runtime, the tool changes only the current project's `.vscode/settings.json` and `.vscode/.assist-toggle-backups/`. It does not touch:
+At runtime, the tool manages only the current project's `.vscode/settings.json`, `.vscode/.assist-toggle-backups/`, and temporary `.vscode/.assist-toggle.lockdir/`. It does not touch:
 
 - Windows VS Code User settings
 - WSL VS Code User or Machine settings

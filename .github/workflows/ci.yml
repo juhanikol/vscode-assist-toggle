@@ -26,7 +26,7 @@ jobs:
           sudo apt-get install -y shellcheck make
 
       - name: Bash syntax checks
-        run: bash -n install.sh scripts/vscode-mode.sh tests/dependency-checks.sh tests/integration.sh
+        run: bash -n install.sh scripts/vscode-mode.sh tests/dependency-checks.sh tests/integration.sh tests/release-checks.sh
 
       - name: Python syntax check
         run: python3 -c 'import ast, pathlib; ast.parse(pathlib.Path("scripts/settings-patch.py").read_text(encoding="utf-8"))'

@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -euo pipefail
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
@@ -17,7 +17,7 @@ if grep -Eq 'sudo apt( |-)upgrade' "$ROOT_DIR/install.sh"; then
   exit 1
 fi
 
-mkdir -p "$TEST_DIR/no-python" "$TEST_DIR/optional-only" "$TEST_DIR/home-required" "$TEST_DIR/home-optional"
+mkdir -p "$TEST_DIR/no-python" "$TEST_DIR/old-python" "$TEST_DIR/optional-only" "$TEST_DIR/home-required" "$TEST_DIR/home-old" "$TEST_DIR/home-optional"
 ln -s "$(command -v dirname)" "$TEST_DIR/no-python/dirname"
 ln -s "$(command -v cat)" "$TEST_DIR/no-python/cat"
 
@@ -25,9 +25,26 @@ if HOME="$TEST_DIR/home-required" PATH="$TEST_DIR/no-python" /bin/bash "$ROOT_DI
   echo "Expected installation without python3 to fail." >&2
   exit 1
 fi
-grep -Fq "Python 3 is required." "$TEST_DIR/required-output"
+grep -Fq "Python 3.9 or newer is required." "$TEST_DIR/required-output"
 grep -Fq "Ubuntu/WSL: sudo apt update" "$TEST_DIR/required-output"
 grep -Fq "Ubuntu/WSL: sudo apt install -y python3" "$TEST_DIR/required-output"
+
+ln -s "$(command -v dirname)" "$TEST_DIR/old-python/dirname"
+ln -s "$(command -v cat)" "$TEST_DIR/old-python/cat"
+cat > "$TEST_DIR/old-python/python3" <<'PYTHON'
+#!/bin/bash
+if [[ "${1:-}" == "--version" ]]; then
+  echo "Python 3.8.0"
+  exit 0
+fi
+exit 1
+PYTHON
+chmod +x "$TEST_DIR/old-python/python3"
+if HOME="$TEST_DIR/home-old" PATH="$TEST_DIR/old-python" /bin/bash "$ROOT_DIR/install.sh" >"$TEST_DIR/old-output" 2>&1; then
+  echo "Expected installation with Python 3.8 to fail." >&2
+  exit 1
+fi
+grep -Fq "Python 3.9 or newer is required. Found: Python 3.8.0" "$TEST_DIR/old-output"
 
 for command_name in dirname cat mkdir cp chmod mktemp mv touch grep env bash python3; do
   command_path="$(command -v "$command_name")"
@@ -40,4 +57,4 @@ grep -Fq "Ubuntu/WSL: sudo apt install -y make" "$TEST_DIR/optional-output"
 grep -Fq "VS Code code command is optional. It is only needed for vassist --open." "$TEST_DIR/optional-output"
 test -x "$TEST_DIR/home-optional/.local/bin/vassist"
 
-echo "Required and optional dependency-message tests passed."
+echo "Required/minimum-version and optional dependency-message tests passed."
