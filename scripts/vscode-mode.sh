@@ -18,7 +18,7 @@ Usage:
   vassist learn [--open] [PATH]
   vassist strict [--open] [PATH]
   vassist assist [--open] [PATH]
-  vassist status | doctor | backup | backups
+  vassist status | doctor [--fix] | backup | backups
   vassist restore [latest|history-backup-filename]
   vassist --version
   vassist --help
@@ -91,6 +91,13 @@ while [[ $# -gt 0 ]]; do
       ;;
     --force)
       FORCE="true"
+      ;;
+    --fix)
+      if [[ "$COMMAND" != "doctor" ]]; then
+        echo "--fix is not supported for $COMMAND" >&2
+        exit 1
+      fi
+      EXTRA_ARGS+=("--fix")
       ;;
     *)
       if [[ "$COMMAND" == "restore" && ${#EXTRA_ARGS[@]} -eq 0 && "$1" != -* ]]; then
@@ -262,6 +269,16 @@ if [[ "$COMMAND" == "doctor" ]]; then
   else
     echo "[INFO] make is not installed; it is optional."
   fi
+
+  if [[ "$failures" -eq 0 ]]; then
+    if preference_output="$(python3 "$SCRIPT_DIR/settings-patch.py" doctor "$SETTINGS_FILE" "$BACKUP_DIR" "${EXTRA_ARGS[@]}" 2>&1)"; then
+      printf '%s\n' "$preference_output"
+    else
+      printf '%s\n' "$preference_output"
+      failures=$((failures + 1))
+    fi
+  fi
+
   echo "Report issues: $ISSUES_URL"
 
   if [[ "$failures" -eq 0 ]]; then

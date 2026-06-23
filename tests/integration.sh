@@ -7,6 +7,7 @@ TEST_HOME="$TEST_DIR/home"
 TEST_PROJECT="$TEST_DIR/project"
 COMMENT_PROJECT="$TEST_DIR/comment-project"
 DEFAULT_PROJECT="$TEST_DIR/default-project"
+DOCTOR_PROJECT="$TEST_DIR/doctor-project"
 DOT_PROJECT="$TEST_DIR/dot-project"
 ABSOLUTE_PROJECT="$TEST_DIR/absolute-project"
 IDEMPOTENT_PROJECT="$TEST_DIR/idempotent-project"
@@ -20,7 +21,22 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "$TEST_HOME" "$TEST_PROJECT" "$COMMENT_PROJECT/.vscode" "$DEFAULT_PROJECT" "$DOT_PROJECT" "$ABSOLUTE_PROJECT" "$IDEMPOTENT_PROJECT/.vscode" "$LOCK_PROJECT" "$SLOW_BIN" "$OLD_BIN" "$FAKE_BIN"
+assert_assist_settings() {
+  local settings_file="$1"
+  test -f "$settings_file"
+  python3 - "$settings_file" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    settings = json.load(handle)
+
+assert settings["chat.disableAIFeatures"] is False
+assert settings["github.copilot.enable"] == {"*": True}
+PY
+}
+
+mkdir -p "$TEST_HOME" "$TEST_PROJECT" "$COMMENT_PROJECT/.vscode" "$DEFAULT_PROJECT" "$DOCTOR_PROJECT" "$DOT_PROJECT" "$ABSOLUTE_PROJECT" "$IDEMPOTENT_PROJECT/.vscode" "$LOCK_PROJECT" "$SLOW_BIN" "$OLD_BIN" "$FAKE_BIN"
 cat > "$FAKE_BIN/code" <<EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$*" > "$TEST_DIR/code-args"
@@ -112,7 +128,7 @@ test ! -e "$HOME/.vscode/settings.json"
 test -f "$HOME/.vscode/settings.json"
 grep -Fxq "$HOME" "$TEST_DIR/code-pwd"
 "$HOME/.local/bin/vassist" assist "$HOME" --force >/dev/null
-test ! -e "$HOME/.vscode/settings.json"
+assert_assist_settings "$HOME/.vscode/settings.json"
 
 if SUDO_USER=test-user "$HOME/.local/bin/vassist" status >"$TEST_DIR/sudo-output" 2>&1; then
   echo "Expected sudo-style execution to be refused." >&2
@@ -158,8 +174,9 @@ cmp "$TEST_DIR/original-backup-copy" .vscode/.assist-toggle-backups/original.set
 
 restore_history_count="$assist_history_count"
 "$HOME/.local/bin/vassist" restore >"$TEST_DIR/restore-again-output"
-grep -Fq "Already restored to original/pre-learning state" "$TEST_DIR/restore-again-output"
-test "$restore_history_count" = "$(find .vscode/.assist-toggle-backups -maxdepth 1 -name 'settings.*' -type f | wc -l)"
+grep -Fq "Restored original/pre-learning state" "$TEST_DIR/restore-again-output"
+test "$((restore_history_count + 1))" = "$(find .vscode/.assist-toggle-backups -maxdepth 1 -name 'settings.*' -type f | wc -l)"
+cmp "$TEST_DIR/original-backup-copy" .vscode/settings.json
 "$HOME/.local/bin/vassist" learn >/dev/null
 cmp "$TEST_DIR/original-backup-copy" .vscode/.assist-toggle-backups/original.settings.json
 
@@ -205,6 +222,40 @@ grep -Fq "Stale project lock detected" "$TEST_DIR/stale-lock-output"
 grep -Fq "After confirming no vassist process is running, remove it manually" "$TEST_DIR/stale-lock-output"
 test -d .vscode/.assist-toggle.lockdir
 rm -rf .vscode/.assist-toggle.lockdir
+
+mkdir -p "$TEST_DIR/fake-user-settings"
+cat > "$TEST_DIR/fake-user-settings/settings.json" <<'JSON'
+{
+    "editor.acceptSuggestionOnEnter": "off"
+}
+JSON
+cd "$DOCTOR_PROJECT"
+"$HOME/.local/bin/vassist" assist >/dev/null
+VASSIST_USER_SETTINGS_OVERRIDE="$TEST_DIR/fake-user-settings/settings.json" "$HOME/.local/bin/vassist" doctor >"$TEST_DIR/doctor-mismatch-output"
+grep -Fq "[MISMATCH]" "$TEST_DIR/doctor-mismatch-output"
+grep -Fq "editor.acceptSuggestionOnEnter" "$TEST_DIR/doctor-mismatch-output"
+"$HOME/.local/bin/vassist" learn >/dev/null
+VASSIST_USER_SETTINGS_OVERRIDE="$TEST_DIR/fake-user-settings/settings.json" "$HOME/.local/bin/vassist" doctor >"$TEST_DIR/doctor-learn-output"
+grep -Fq "[MISMATCH]" "$TEST_DIR/doctor-learn-output"
+grep -Fq "editor.acceptSuggestionOnEnter" "$TEST_DIR/doctor-learn-output"
+if VASSIST_USER_SETTINGS_OVERRIDE="$TEST_DIR/fake-user-settings/settings.json" "$HOME/.local/bin/vassist" doctor --fix >"$TEST_DIR/doctor-learn-fix-output" 2>&1; then
+  echo "Expected doctor --fix to be refused in learn mode." >&2
+  exit 1
+fi
+grep -Fq "Error: run vassist assist first before applying preference fixes." "$TEST_DIR/doctor-learn-fix-output"
+"$HOME/.local/bin/vassist" assist >/dev/null
+printf 'y\n' | VASSIST_USER_SETTINGS_OVERRIDE="$TEST_DIR/fake-user-settings/settings.json" "$HOME/.local/bin/vassist" doctor --fix >"$TEST_DIR/doctor-fix-output"
+python3 - .vscode/settings.json <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    settings = json.load(handle)
+
+assert settings["editor.acceptSuggestionOnEnter"] == "off"
+PY
+
+cd "$TEST_PROJECT"
 test ! -e .vscode/settings.json
 "$HOME/.local/bin/vassist" learn --dry-run >/dev/null
 test ! -e .vscode/settings.json
@@ -215,7 +266,7 @@ test ! -e .vscode/settings.json
 "$HOME/.local/bin/vassist" status | grep -Fq "Current mode: Strict"
 "$HOME/.local/bin/vassist" status | grep -Fq "normal editor completion assistance is reduced"
 "$HOME/.local/bin/vassist" assist >/dev/null
-test ! -e .vscode/settings.json
+assert_assist_settings .vscode/settings.json
 "$HOME/.local/bin/vassist" learn --open >/dev/null
 grep -Fxq "." "$TEST_DIR/code-args"
 "$HOME/.local/bin/vassist" assist >/dev/null

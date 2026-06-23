@@ -26,6 +26,21 @@ STRICT_VALUES: dict[str, Any] = {
     "editor.tabCompletion": "off",
     "editor.snippetSuggestions": "none",
 }
+ASSIST_DEFAULTS: dict[str, Any] = {
+    "chat.disableAIFeatures": False,
+    "github.copilot.enable": {"*": True},
+    "editor.inlineSuggest.enabled": True,
+    "editor.suggestOnTriggerCharacters": True,
+    "editor.acceptSuggestionOnEnter": "on",
+    "editor.acceptSuggestionOnCommitCharacter": True,
+    "editor.tabCompletion": "off",
+    "editor.snippetSuggestions": "inline",
+    "editor.quickSuggestions": {
+        "other": "on",
+        "comments": "off",
+        "strings": "off",
+    },
+}
 QUICK_VALUES: dict[str, bool] = {
     "other": False,
     "comments": False,
@@ -34,6 +49,52 @@ QUICK_VALUES: dict[str, bool] = {
 STATE_NAME = "original-state.json"
 ORIGINAL_JSON_NAME = "original.settings.json"
 ORIGINAL_MISSING_NAME = "original.settings.missing"
+
+
+def find_user_settings() -> Path | None:
+    override = os.environ.get("VASSIST_USER_SETTINGS_OVERRIDE")
+    if override:
+        try:
+            path = Path(override).expanduser()
+            return path if path.exists() else None
+        except OSError:
+            return None
+
+    candidates = [
+        Path.home() / ".vscode-server" / "data" / "User" / "settings.json",
+        Path.home() / ".config" / "Code" / "User" / "settings.json",
+    ]
+    for path in candidates:
+        try:
+            if path.exists():
+                return path
+        except OSError:
+            continue
+
+    usernames: list[str] = []
+    for value in (os.environ.get("USERNAME"), _windows_username_from_proc_version(), os.environ.get("USER")):
+        if value and value not in usernames:
+            usernames.append(value)
+    for username in usernames:
+        path = Path("/mnt/c/Users") / username / "AppData" / "Roaming" / "Code" / "User" / "settings.json"
+        try:
+            if path.exists():
+                return path
+        except OSError:
+            continue
+    return None
+
+
+def _windows_username_from_proc_version() -> str | None:
+    try:
+        text = Path("/proc/version").read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return None
+    marker = "Microsoft@"
+    if marker not in text:
+        return None
+    username = text.split(marker, 1)[1].split(maxsplit=1)[0].split("-", 1)[0].strip()
+    return username or None
 
 
 def strip_jsonc(text: str) -> str:
@@ -357,7 +418,11 @@ def restore_saved(
 
 def apply_mode(current: dict[str, Any], mode: str, state: dict[str, Any]) -> dict[str, Any]:
     if mode == "assist":
-        return restore_saved(current, state, set(LEARN_VALUES | STRICT_VALUES), True)
+        result = dict(current)
+        for key in LEARN_VALUES | STRICT_VALUES:
+            result.pop(key, None)
+        result.update(ASSIST_DEFAULTS)
+        return result
     result = dict(current)
     result.update(LEARN_VALUES)
     if mode == "learn":
@@ -410,13 +475,83 @@ def select_history_backup(backup_dir: Path, requested: str) -> Path:
     return selected
 
 
+def display_path(path: Path) -> str:
+    try:
+        resolved = path.expanduser().resolve()
+        home = Path.home().resolve()
+        if resolved == home:
+            return "~"
+        if resolved.is_relative_to(home):
+            return "~/" + str(resolved.relative_to(home))
+        return str(resolved)
+    except OSError:
+        return str(path)
+
+
+def json_value(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False)
+
+
+def doctor_settings(settings: Path, backup_dir: Path, *, fix: bool) -> int:
+    current = read_object(settings)
+    state_path = backup_dir / STATE_NAME
+    state = read_object(state_path, missing_ok=False) if state_path.exists() else None
+    if state is not None:
+        state = upgrade_state(state, backup_dir, current)
+    if fix and state is not None and state.get("active_mode") in {"learn", "strict"}:
+        print("Error: run vassist assist first before applying preference fixes.", file=sys.stderr)
+        return 1
+
+    user_settings_path = find_user_settings()
+    if user_settings_path is None:
+        print("User settings: none found")
+        print("[OK] Workspace settings match your global preferences for all managed keys.")
+        return 0
+
+    user_settings = read_object(user_settings_path)
+    user_path_label = display_path(user_settings_path)
+    print(f"User settings: {user_path_label}")
+    mismatches: list[tuple[str, Any, Any]] = []
+    for key in ASSIST_DEFAULTS:
+        if key in current and key in user_settings and current[key] != user_settings[key]:
+            mismatches.append((key, current[key], user_settings[key]))
+
+    if not mismatches:
+        print("[OK] Workspace settings match your global preferences for all managed keys.")
+        return 0
+
+    for key, workspace_value, user_value in mismatches:
+        print(f"  [MISMATCH] {key}")
+        print(f"    workspace:       {json_value(workspace_value)}    (vassist default)")
+        print(f"    your preference: {json_value(user_value)}   (from {user_path_label})")
+        print(f"    Suggested fix:   set {json_value(key)}: {json_value(user_value)} in workspace settings")
+
+    if not fix:
+        return 0
+
+    applied = 0
+    updated = dict(current)
+    for key, _workspace_value, user_value in mismatches:
+        print(f"Fix: {key}")
+        answer = input("Apply fix? [y/N] ")
+        if answer.lower() == "y":
+            updated[key] = user_value
+            applied += 1
+    if applied:
+        atomic_write(settings, updated)
+    print(f"Applied {applied} preference fix(es).")
+    print("Run Developer: Reload Window if changes do not apply.")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Manage project-local VS Code learning settings.")
-    parser.add_argument("command", choices=("learn", "strict", "assist", "status", "backup", "backups", "restore"))
+    parser.add_argument("command", choices=("learn", "strict", "assist", "status", "doctor", "backup", "backups", "restore"))
     parser.add_argument("settings_file", type=Path)
     parser.add_argument("backup_dir", type=Path)
     parser.add_argument("history_backup", nargs="?")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--fix", action="store_true")
     args = parser.parse_args()
     state_path = args.backup_dir / STATE_NAME
 
@@ -449,6 +584,9 @@ def main() -> int:
             return 0
 
         current = read_object(args.settings_file)
+        if args.command == "doctor":
+            return doctor_settings(args.settings_file, args.backup_dir, fix=args.fix)
+
         if args.command == "status":
             state = read_object(state_path, missing_ok=False) if state_path.exists() else None
             if state is not None:
@@ -466,7 +604,7 @@ def main() -> int:
             elif mode_label == "Strict":
                 print("Effect: AI is disabled and normal editor completion assistance is reduced.")
             elif mode_label == "Assist/default":
-                print("Effect: no vassist learning mode is active; managed settings are restored/defaulted.")
+                print("Effect: no vassist learning mode is active; managed settings are restored/defaulted; AI assistance defaults are written to settings.json")
             else:
                 print("Effect: managed settings no longer match the saved active mode.")
             settings_kind = "present" if args.settings_file.exists() else "missing"
@@ -569,14 +707,10 @@ def main() -> int:
         state = read_object(state_path, missing_ok=False) if state_path.exists() else None
         if state is not None:
             state = upgrade_state(state, args.backup_dir, current)
-        updated = (
-            apply_mode(current, "assist", state)
-            if state is not None
-            else restore_saved(current, None, set(LEARN_VALUES | STRICT_VALUES), True)
-        )
+        updated = apply_mode(current, "assist", state or capture_state(args.settings_file.exists(), current, "assist"))
         if args.dry_run:
             warn_about_comment_loss(args.settings_file, dry_run=True)
-            print("<settings file would be removed>" if not updated and state and not state.get("settings_file_existed") else json.dumps(updated, indent=4, ensure_ascii=False))
+            print(json.dumps(updated, indent=4, ensure_ascii=False))
             return 0
         if updated == current:
             if state is not None and state.get("active_mode") is not None:
