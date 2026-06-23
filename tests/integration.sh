@@ -210,7 +210,7 @@ wait "$first_vassist_pid"
 test ! -e .vscode/.assist-toggle.lockdir
 
 cd "$TEST_PROJECT"
-"$HOME/.local/bin/vassist" doctor | grep -Fq "Doctor result: healthy"
+VASSIST_USER_SETTINGS_OVERRIDE="$TEST_DIR/missing-user-settings.json" "$HOME/.local/bin/vassist" doctor | grep -Fq "Doctor result: healthy"
 mkdir -p .vscode/.assist-toggle.lockdir
 printf '%s\n' 99999999 > .vscode/.assist-toggle.lockdir/pid
 printf '%s\n' 2026-01-01T00:00:00Z > .vscode/.assist-toggle.lockdir/timestamp
@@ -232,8 +232,11 @@ JSON
 cd "$DOCTOR_PROJECT"
 "$HOME/.local/bin/vassist" assist >/dev/null
 VASSIST_USER_SETTINGS_OVERRIDE="$TEST_DIR/fake-user-settings/settings.json" "$HOME/.local/bin/vassist" doctor >"$TEST_DIR/doctor-mismatch-output"
+grep -Fq "User settings: $TEST_DIR/fake-user-settings/settings.json" "$TEST_DIR/doctor-mismatch-output"
 grep -Fq "[MISMATCH]" "$TEST_DIR/doctor-mismatch-output"
 grep -Fq "editor.acceptSuggestionOnEnter" "$TEST_DIR/doctor-mismatch-output"
+grep -Fq "workspace:       \"on\"    (vassist default)" "$TEST_DIR/doctor-mismatch-output"
+grep -Fq "your preference: \"off\"   (from $TEST_DIR/fake-user-settings/settings.json)" "$TEST_DIR/doctor-mismatch-output"
 "$HOME/.local/bin/vassist" learn >/dev/null
 VASSIST_USER_SETTINGS_OVERRIDE="$TEST_DIR/fake-user-settings/settings.json" "$HOME/.local/bin/vassist" doctor >"$TEST_DIR/doctor-learn-output"
 grep -Fq "[MISMATCH]" "$TEST_DIR/doctor-learn-output"

@@ -71,30 +71,38 @@ def find_user_settings() -> Path | None:
         except OSError:
             continue
 
-    usernames: list[str] = []
-    for value in (os.environ.get("USERNAME"), _windows_username_from_proc_version(), os.environ.get("USER")):
-        if value and value not in usernames:
-            usernames.append(value)
-    for username in usernames:
-        path = Path("/mnt/c/Users") / username / "AppData" / "Roaming" / "Code" / "User" / "settings.json"
-        try:
-            if path.exists():
-                return path
-        except OSError:
-            continue
-    return None
-
-
-def _windows_username_from_proc_version() -> str | None:
+    users_root = Path("/mnt/c/Users")
     try:
-        text = Path("/proc/version").read_text(encoding="utf-8", errors="ignore")
+        user_dirs = list(users_root.iterdir())
     except OSError:
         return None
-    marker = "Microsoft@"
-    if marker not in text:
+
+    skipped_names = {"all users", "default", "default user", "public"}
+    matches: list[Path] = []
+    for user_dir in user_dirs:
+        if user_dir.name.lower() in skipped_names:
+            continue
+        try:
+            if not user_dir.is_dir():
+                continue
+            path = user_dir / "AppData" / "Roaming" / "Code" / "User" / "settings.json"
+            if path.exists():
+                matches.append(path)
+        except OSError:
+            continue
+
+    if not matches:
         return None
-    username = text.split(marker, 1)[1].split(maxsplit=1)[0].split("-", 1)[0].strip()
-    return username or None
+    if len(matches) == 1:
+        return matches[0]
+
+    preferred_user = os.environ.get("USER")
+    if preferred_user:
+        preferred_user = preferred_user.lower()
+        for path in matches:
+            if path.parents[4].name.lower() == preferred_user:
+                return path
+    return matches[0]
 
 
 def strip_jsonc(text: str) -> str:
