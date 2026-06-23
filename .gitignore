@@ -3,3 +3,4 @@ local/
 *.backup.*
 .vscode/.assist-toggle-backups/
 .vscode/.assist-toggle.lockdir/
+AGENT_BRIEFING.md
