@@ -311,8 +311,8 @@ python3 "$SCRIPT_DIR/settings-patch.py" \
 release_lock
 trap - EXIT
 
-if [[ "$COMMAND" == "learn" || "$COMMAND" == "strict" || "$COMMAND" == "assist" || "$COMMAND" == "restore" ]]; then
-  echo "Run Developer: Reload Window if changes do not apply."
+if [[ "$COMMAND" == "learn" || "$COMMAND" == "strict" || "$COMMAND" == "assist" ]]; then
+  echo "Close all VS Code windows and reopen the project for changes to take effect."
 fi
 
 if [[ "$OPEN_AFTER" == "true" ]]; then

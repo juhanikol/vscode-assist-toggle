@@ -33,6 +33,7 @@ with open(sys.argv[1], encoding="utf-8") as handle:
 
 assert settings["chat.disableAIFeatures"] is False
 assert settings["github.copilot.enable"] == {"*": True}
+assert settings["editor.tabCompletion"] == "on"
 PY
 }
 
@@ -89,6 +90,7 @@ grep -Fq "contains JSONC comments" "$TEST_DIR/comment-dry-warning"
 grep -Fq "A real mode change would rewrite" "$TEST_DIR/comment-dry-warning"
 cmp "$TEST_DIR/settings-before-dry-run.jsonc" .vscode/settings.json
 "$HOME/.local/bin/vassist" learn >"$TEST_DIR/comment-write-output" 2>"$TEST_DIR/comment-write-warning"
+grep -Fq "Close all VS Code windows and reopen the project for changes to take effect." "$TEST_DIR/comment-write-output"
 grep -Fq "This mode change will rewrite" "$TEST_DIR/comment-write-warning"
 if grep -Fq "This comment should trigger" .vscode/settings.json; then
     echo "Comment was unexpectedly preserved"
@@ -154,7 +156,8 @@ grep -Fxq "$IDEMPOTENT_PROJECT" "$TEST_DIR/code-pwd"
 test "$learn_inode" = "$(stat -c '%i' .vscode/settings.json)"
 test "$learn_history_count" = "$(find .vscode/.assist-toggle-backups -maxdepth 1 -name 'settings.*' -type f | wc -l)"
 
-"$HOME/.local/bin/vassist" strict >/dev/null
+"$HOME/.local/bin/vassist" strict >"$TEST_DIR/strict-output"
+grep -Fq "Close all VS Code windows and reopen the project for changes to take effect." "$TEST_DIR/strict-output"
 strict_inode="$(stat -c '%i' .vscode/settings.json)"
 strict_history_count="$(find .vscode/.assist-toggle-backups -maxdepth 1 -name 'settings.*' -type f | wc -l)"
 "$HOME/.local/bin/vassist" strict >"$TEST_DIR/strict-again-output"
@@ -163,7 +166,8 @@ test "$strict_inode" = "$(stat -c '%i' .vscode/settings.json)"
 test "$strict_history_count" = "$(find .vscode/.assist-toggle-backups -maxdepth 1 -name 'settings.*' -type f | wc -l)"
 cmp "$TEST_DIR/original-backup-copy" .vscode/.assist-toggle-backups/original.settings.json
 
-"$HOME/.local/bin/vassist" assist >/dev/null
+"$HOME/.local/bin/vassist" assist >"$TEST_DIR/assist-output"
+grep -Fq "Close all VS Code windows and reopen the project for changes to take effect." "$TEST_DIR/assist-output"
 assist_inode="$(stat -c '%i' .vscode/settings.json)"
 assist_history_count="$(find .vscode/.assist-toggle-backups -maxdepth 1 -name 'settings.*' -type f | wc -l)"
 "$HOME/.local/bin/vassist" assist >"$TEST_DIR/assist-again-output"

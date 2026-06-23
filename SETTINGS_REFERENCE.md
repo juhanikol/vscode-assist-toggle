@@ -2,7 +2,8 @@
 
 This document explains every VS Code setting that `vassist` manages, what the
 VS Code factory default is for each one, and how the three modes apply and
-restore them.
+restore them. `vassist assist` generally writes VS Code factory defaults, with
+one intentional exception for `editor.tabCompletion`.
 
 ---
 
@@ -12,7 +13,7 @@ restore them.
 |---|---|
 | `learn` | Writes `LEARN_VALUES` (AI off, IntelliSense untouched) |
 | `strict` | Writes `LEARN_VALUES` + `STRICT_VALUES` (AI off + generic completion reduced) |
-| `assist` | Writes `ASSIST_DEFAULTS` — the VS Code factory defaults for every key vassist owns |
+| `assist` | Writes `ASSIST_DEFAULTS` — VS Code factory defaults, except tab completion is intentionally on |
 | `restore` | Restores the original snapshot taken before the first learn/strict run |
 
 ### Why `assist` writes explicit defaults instead of removing keys
@@ -27,23 +28,27 @@ a previous learn session, the workspace will behave inconsistently after the
 key is removed — the AI features may stay suppressed even though nothing in
 the settings files says so.
 
-Writing the factory defaults explicitly solves both problems at once:
+Writing explicit assist defaults solves both problems at once:
 
 - VS Code always has a concrete value to read at the workspace scope.
 - The workspace-state cache is overwritten on the next reload.
 - The user ends up in a clearly documented, well-known state.
 
-If that default does not match a user's personal preference — for example a
-user who prefers `"editor.tabCompletion": "off"` — `vassist doctor` can detect
-the mismatch and propose or apply a correction. The user makes one intentional
-decision; the tool documents it.
+`editor.tabCompletion` is the one deliberate exception: VS Code's factory
+default is `"off"`, but `vassist assist` writes `"on"` because most beginner
+users expect Tab to accept useful completions during normal work. Leaving it
+off makes assist mode feel like completion is still partially reduced after a
+practice session. If that value does not match a user's personal preference,
+`vassist doctor` can detect the mismatch and propose or apply a correction.
+The user makes one intentional decision; the tool documents it.
 
 ---
 
 ## ASSIST_DEFAULTS — the values written by `vassist assist`
 
-These are the VS Code factory defaults for every setting `vassist` touches.
-They are written as a group whenever `vassist assist` runs.
+These are the values written as a group whenever `vassist assist` runs. They
+match VS Code factory defaults except for `editor.tabCompletion`, which is
+intentionally set to `"on"` for a more helpful beginner assist mode.
 
 ```python
 ASSIST_DEFAULTS: dict[str, Any] = {
@@ -65,8 +70,8 @@ ASSIST_DEFAULTS: dict[str, Any] = {
     # Accept suggestion on commit characters (; , etc.) — default on
     "editor.acceptSuggestionOnCommitCharacter": True,
 
-    # Tab completion — default off
-    "editor.tabCompletion": "off",
+    # Tab completion — VS Code default is "off"; vassist intentionally enables it
+    "editor.tabCompletion": "on",
 
     # Snippet suggestions in dropdown — default "inline"
     "editor.snippetSuggestions": "inline",
@@ -80,9 +85,9 @@ ASSIST_DEFAULTS: dict[str, Any] = {
 }
 ```
 
-After running `vassist assist`, the user should run **Developer: Reload Window**
-(`Ctrl+Shift+P`) in VS Code. This forces VS Code to re-read `settings.json`
-and flush any cached state from the previous learn/strict session.
+After running `vassist assist`, the user should close all VS Code windows and
+reopen the project. This forces VS Code to re-read `settings.json` and flush
+any cached state from the previous learn/strict session.
 
 ---
 
@@ -211,9 +216,13 @@ because Tab is widely used and accidental acceptance is a known source of
 confusion. This key is included in strict mode for explicitness and to
 override any user setting that has enabled it.
 
-Note that `vassist assist` writes the default `"off"` for this key. A user
-who has enabled tab completion globally will see it reset. `vassist doctor`
-can detect this and propose restoring their preference.
+Note that `vassist assist` intentionally writes `"on"` for this key even
+though the VS Code factory default is `"off"`. This is a beginner-friendly
+choice: after leaving a practice session, Tab should accept useful completions
+again instead of making assist mode feel partially disabled. A user who
+prefers the VS Code default can keep `"off"` globally, and `vassist doctor`
+can detect the mismatch and propose restoring that preference in the
+workspace.
 
 ### `editor.snippetSuggestions`
 
@@ -303,9 +312,9 @@ vassist doctor — checking workspace settings against your user preferences
       [y] apply  [n] skip  [?] explain
 
   editor.tabCompletion
-    workspace (current):  "off"  ← vassist default (also VS Code default)
-    your user setting:    "on"
-    → Propose fix: set "editor.tabCompletion": "on" in this workspace?
+    workspace (current):  "on"   ← vassist assist default
+    your user setting:    "off"
+    → Propose fix: set "editor.tabCompletion": "off" in this workspace?
       [y] apply  [n] skip  [?] explain
 
 All other managed settings match your preferences or use VS Code defaults.

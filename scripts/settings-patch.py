@@ -33,7 +33,7 @@ ASSIST_DEFAULTS: dict[str, Any] = {
     "editor.suggestOnTriggerCharacters": True,
     "editor.acceptSuggestionOnEnter": "on",
     "editor.acceptSuggestionOnCommitCharacter": True,
-    "editor.tabCompletion": "off",
+    "editor.tabCompletion": "on",
     "editor.snippetSuggestions": "inline",
     "editor.quickSuggestions": {
         "other": "on",
@@ -548,7 +548,7 @@ def doctor_settings(settings: Path, backup_dir: Path, *, fix: bool) -> int:
     if applied:
         atomic_write(settings, updated)
     print(f"Applied {applied} preference fix(es).")
-    print("Run Developer: Reload Window if changes do not apply.")
+    print("Close all VS Code windows and reopen the project for changes to take effect.")
     return 0
 
 

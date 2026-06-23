@@ -65,6 +65,8 @@ When you run vassist the project opens in learning mode. AI assistance is off be
 
 The goal is not to prevent anyone from using AI. The goal is to help the learner make one clear decision at the beginning of the session — and then stay inside that decision long enough to actually learn.
 
+NOTE: vassist controls GitHub Copilot and VS Code's built-in AI features. Other AI extensions (such as Codeium, Continue, Tabnine, or similar) manage their own enabled/disabled state independently and are not affected by vassist. Disable those manually per workspace using VS Code's Extensions panel if needed.
+
 ## Install
 
 Clone this repository once and run its installer:
@@ -155,6 +157,8 @@ vassist assist --open
 The default command and `--open` apply the mode and then run `code .` from the target project. Run **Developer: Reload Window** if changes do not apply.
 
 ## Restore
+
+After running `vassist assist` or `vassist restore`, **close all VS Code windows and reopen your project**. If another project is open in a separate window, close that too. VS Code shares internal state across windows and a partial restart may not apply the new settings.
 
 ```bash
 vassist backups
